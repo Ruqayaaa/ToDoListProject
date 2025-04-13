@@ -1,22 +1,25 @@
 import React, { useState } from 'react'; // Importing react and useState
-import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, ScrollView, Text, View, TextInput, Platform, TouchableOpacity, Image, Pressable } from 'react-native'; // Import necessary components for the UI
 import { Ionicons } from '@expo/vector-icons'; // Provides the icons needed for the UI
 import top_corner from './assets/top_corner.png'; // importing the image for background
-
 import { getAuth } from 'firebase/auth';
 import { getDatabase, ref, set } from 'firebase/database';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useNavigation } from '@react-navigation/native'; // Import useNavigation
+
 
 // The function below defines the main component, where it defines the state of the task name, description, date to be done, and priority
 const AddingToDoPage = () => {
+  const navigation = useNavigation(); // Get the navigation object
   const [task, setTask] = useState(''); // default value of task is empty string
   const [description, setDescription] = useState(''); // default value of description is empty string
-  const [selectedDate, setSelectedDate] = useState(new Date()); // default value of selected date is a new date
-  const [priority, setPriority] = useState(0); // Priority in this case is 0 (no priority) there are three total levels (1,2,3) which indicate low, medium, and high
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const initialDate = task.date ? new Date(task.date) : new Date();
+    initialDate.setHours(10, 0, 0, 0); // Set time to 10:00 AM
+    return initialDate;
+  });  const [priority, setPriority] = useState(0); // Priority in this case is 0 (no priority) there are three total levels (1,2,3) which indicate low, medium, and high
   const [showPicker, setPicker] = useState(false);
   
-
 
   const toggleDatePicker = () => {
     setPicker(!showPicker)
@@ -25,6 +28,7 @@ const AddingToDoPage = () => {
   const onChange = ({ type }, selectedDate) => {
     if (type == "set") {
       const dateSelected =selectedDate;
+      dateSelected.setHours(10, 0, 0, 0);
       setSelectedDate(dateSelected)
       if(Platform.OS === "android") {
         toggleDatePicker();
@@ -53,6 +57,15 @@ const AddingToDoPage = () => {
   //https://github.com/jayisback11/firebase-todo-list/tree/master/src/components
   const writeToDatabase = () => {
     try {
+      if (!task.trim()) {
+        alert('Task name cannot be empty!'); // Show an alert to the user
+        return; // Stop the function from proceeding
+      }
+      if (priority === 0) {
+        alert('Please select a priority!'); // Show an alert to the user
+        return; // Stop the function from proceeding
+      }
+
       const auth = getAuth();
       const db = getDatabase(); 
       //getting the current signed in user 
@@ -60,7 +73,14 @@ const AddingToDoPage = () => {
       //unique ID based on the user 
       const uidd = Date.now(); 
       
-      const formattedDate = selectedDate ? selectedDate.toISOString().split("T")[0] : '';
+      let formattedDate;
+    if (selectedDate) {
+        // Format the date to YYYY-MM-DD
+    formattedDate = selectedDate.toISOString().split("T")[0];
+    } else {
+        // If no date is selected, set formattedDate to an empty string or handle it as needed
+    formattedDate = '';
+    }
       
       //reference the database, for each user: which has a unique user UID, the task, description, and date is saved 
       set(ref(db, `/${user.uid}/${uidd}`),  {
@@ -77,10 +97,12 @@ const AddingToDoPage = () => {
       });
       //indicating success of operation
       alert('Task saved successfully!');
+
       //clearing fields 
       setTask(''); 
       setDescription(''); 
       setSelectedDate(''); 
+      navigation.goBack();
     } 
     catch (error) {
       console.error('Error saving task: ', error);
@@ -95,12 +117,13 @@ const AddingToDoPage = () => {
     <ScrollView contentContainerStyle={styles.scrollContainer}>
           <View style={styles.container}>
       {/*The code below displays the circles in the background*/}
-         <View style={styles.image}>
+         
       <Image
         source={top_corner}
-      />
+        style={styles.image}
+      
 
-     </View>
+        />
      <View style={styles.labelRow}>
       <Ionicons name="add-circle" size={30} color="rgba(247, 136, 136, 1)" /> 
       <Text style={styles.label}>Add a New Task</Text>
@@ -112,72 +135,63 @@ const AddingToDoPage = () => {
         style={styles.input}
         placeholder="Input the task name!" // this will be viewed in the text box
         value = {task}
+        maxLength = {30}
         onChangeText={(text) => setTask(text)} // This will update the state of "task" based on what the user inputted
       />
    <Text style = {styles.descTB}>Description</Text>
       {/* This applies the same functionality as the code above but for description of the task*/}
       <TextInput
-      style={styles.inputDesc}
+      style={[styles.inputDesc, {height: 100}]}
       placeholder="Describe the task!" // this will be viewed in the description textbox
       value={description}
       multiline = {true}
-      
+      maxLength = {100}
+
       onChangeText={(text) => setDescription(text)} // Corrected handler
       />
       
       {/* The code below views the date picker, source from https://www.youtube.com/watch?v=UEfFjfW7Zes*/}
       <View>
-        <Text style={styles.dateLabel}>Date</Text>
-        {showPicker && (
-        <DateTimePicker 
-        mode = "date"
-        display = "spinner"
-        value = {selectedDate}
-        onChange = {onChange}
-        style = {styles.datePicker}
-        />
-        )}
+      <Text style={styles.dateLabel}>Date</Text>
+  <TextInput
+    style={styles.dateTB}
+    placeholder="Click to select a date"
+    value={selectedDate ? selectedDate.toISOString().split("T")[0] : ""} // Format as DD/MM/YYYY
+    editable={false} // Prevent editing
+    onPressIn={toggleDatePicker} // Show date picker on press
+  />
 
-        {showPicker && Platform.OS === "ios" && (
-          <View 
-          style = {{ flexDirection: "row", 
-          justifyContent: "space-around"
-          }}
-          >
-            <TouchableOpacity style= {[
-              styles.dateButton
-            ]}
-            onPress = {toggleDatePicker}
-            >
-              <Text style = {[styles.buttonText]}>Cancel</Text>
-            </TouchableOpacity>
+  {showPicker && (
+    <View
+      style={{
+        backgroundColor: "rgba(247, 136, 136, 1)",
+        padding: 10,
+        borderRadius: 10,
+        marginTop: 10,
+      }}
+    >
+      <DateTimePicker
+        mode="date"
+        display="spinner"
+        value={selectedDate}
+        onChange={onChange}
+        style={styles.datePicker}
+        minimumDate={new Date()}
+      />
+    </View>
+  )}
 
-            <TouchableOpacity style= {[
-              styles.dateButton
-            ]}
-            onPress = {confirmDateIOS}
-            >
-              <Text style = {[styles.buttonText]}>Confirm</Text>
-            </TouchableOpacity>
-
-        </View>
-        )}
-
-        {!showPicker && (
-          <Pressable
-          onPress ={toggleDatePicker}
-          > 
-          <TextInput 
-          style={styles.dateTB}
-          placeholder="Click to select a date"
-          value={selectedDate ? selectedDate.toLocaleDateString("en-GB") : ""}
-          onChangeText={setSelectedDate}
-          placeHolderTextColor = "gray"
-          editable = {false}
-          onPressIn = {toggleDatePicker}
-          />
-          </Pressable>
-        )}
+{/* iOS-specific confirm and cancel buttons */} 
+{showPicker && Platform.OS === "ios" && (
+            <View style={{ flexDirection: "row", justifyContent: "space-around", marginTop: 10 }}>
+              <TouchableOpacity style={styles.dateButton} onPress={toggleDatePicker}>
+                <Text style={styles.buText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dateButton} onPress={toggleDatePicker}>
+                <Text style={styles.buText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         
       </View>
       <Text style={styles.priorityLabel}>Priority</Text>
@@ -222,7 +236,7 @@ const AddingToDoPage = () => {
         <Text style={styles.buttonText}>Link to Child</Text> 
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.cancelButton}>
+        <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.navigate('ToDoList')}>
         {/* This views the last two buttons in the page, which are the "Link to child" button and "Save" button */}
         <Text style={{color: 'grey'}}>Go back</Text> 
         </TouchableOpacity>
@@ -236,13 +250,13 @@ const styles = StyleSheet.create({
   // Here we make the container for all the components in the page, 
   container: {
     flexGrow: 1, // taking up extra space available on the phone 
-    backgroundColor: '#fff', // setting background color to white
+    backgroundColor: 'f0f0f0', // setting background color 
     padding: 20, // adding padding across the screen edge (so components dont look expanded)
     paddingTop: 80, // add padding only in the top (make components go lower)
   },
   // the label below is strictly for the labels on top of the firts two textboxes
   label: {
-    fontSize: 30, // adjusting fotn size
+    fontSize: 30, // adjusting font size
     color: 'rgb(247, 136, 136)', // setting font color to black
     position: 'relative',
     zIndex: 1,
@@ -317,7 +331,12 @@ const styles = StyleSheet.create({
   },
   // this style is for the images on top of the page
   image: {
-    position: 'absolute', // this allows us to place the image anywhere on the screen having to adjust it manually to move. it automatically gets placed in top left corner
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: 200,
+    height: 200,
+    resizeMode: "contain",     
   },
   // this style is for the priority icons
   priorityRow: {
@@ -326,7 +345,7 @@ const styles = StyleSheet.create({
     marginBottom: 12, // creates a space between it and the bottom components
     marginTop: 16,    // creates space between it and top components
     paddingVertical: 4,
-    borderRadius: 6,
+   
   },
 
   labelRow: {
@@ -366,7 +385,7 @@ const styles = StyleSheet.create({
   },
 
   cancelButton: {
-    backgroundColor: 'transparent', // setting background color to white
+    backgroundColor: "transparent", // setting background color to white
     padding: 5, // sets space between text and edge of button
     marginBottom: 10,
     marginHorizontal: 126,
@@ -378,12 +397,18 @@ const styles = StyleSheet.create({
 
   // style below sets the text of the buttons
   buttonText: {
-    color: '#fff', // set color to white
-    fontWeight: 'bold', // make the font bold
-  }, 
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  buText: {
+    color: "#fff",
+    fontWeight: "bold",
+    width: "100%",
+    padding: 12,
+    height: 40,
+  },
   dateTB: {
     height: 50, // setting the height of the pages (how long it it)
-    borderColor: '#ccc', // setting the border color to grey
     borderWidth: 1, // setting border width/thickness
     borderRadius: 5,
     marginBottom: 10, // creating a space between the text box and whats below it
@@ -395,7 +420,8 @@ const styles = StyleSheet.create({
   },
   datePicker: {
     height: 110,
-    marginTop: -10,
+    marginTop: 5,
+    marginBottom: 10,
   }, 
   dateButton: {
     paddingHorizontal: 45,

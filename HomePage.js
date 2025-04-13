@@ -1,224 +1,350 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { ProgressBar } from 'react-native-paper'; // Import ProgressBar from react-native-paper
-import TabBar from '../../components/TabBar'; // Import TabBar component
-import { useNavigation } from '@react-navigation/native'; // Import useNavigation hook
+import React, { useState, useEffect } from "react";
+import {View,Text,FlatList,TouchableOpacity,StyleSheet,SafeAreaView,Image,TextInput} from "react-native";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons"; // Import MaterialIcons for different icons
+import { useNavigation } from '@react-navigation/native';
+import TabBar from './/TabBar';
+import { getDatabase, ref, onValue, set, remove } from "firebase/database";
+import { getAuth } from "firebase/auth";
 
-const tasks = [
-  { id: '1', title: 'Task 1', date: '14/2', priority: 'high', assigned: false },
-  { id: '2', title: 'Task 2', date: '15/2', priority: 'medium', assigned: true },
-  { id: '3', title: 'Task 3', date: '16/2', priority: 'low', assigned: false },
-  { id: '4', title: 'Task 4', date: '17/2', priority: 'high', assigned: true },
-  { id: '5', title: 'Task 5', date: '18/2', priority: 'medium', assigned: false },
-  { id: '6', title: 'Task 6', date: '19/2', priority: 'low', assigned: true },
-];
+const ToDoList = () => {
+ const [todos, setTodos] = useState([]);
+ const [filteredTodos, setFilteredTodos] = useState([]); // Filtered list for search
+ const [searchQuery, setSearchQuery] = useState(""); // Search input state
+ const [mood, setMood] = useState(null); // State to hold selected mood
+ const [quote, setQuote] = useState(""); // State to hold selected mood
+ const auth = getAuth();
+ const navigation = useNavigation();
 
-export default function HomeScreen() {
-  const navigation = useNavigation(); // Initialize navigation
+ //read from database 
+ //https://www.youtube.com/watch?v=9orKRpPMveY&t=1928s 
+ useEffect(() => {
+ const user = auth.currentUser;
+ if (user) {
+ const db = getDatabase();
+ //reference database
+ const todosRef = ref(db, `/${user.uid}`);
+ // https://firebase.google.com/docs/database/web/read-and-write
+ //firebase offers onValue() function to read data and listen for changes 
+ // takes in the todolist reference in the datase, takes a snapshot (contains all data at location) 
+ const unsubscribe = onValue(todosRef, (snapshot) => {
+ //to save data retrieved from snapshot 
+ const data = snapshot.val();
+ if (data) {
+ //https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/keys
+ //https://blog.expo.dev/react-native-flatlist-made-easy-20fca51e0327
+ //Object.keys(): returns an array gived by the values in snapshot 
+ /// .map goes through each item in array 
+ const todosArray = Object.keys(data).map((key) => ({
+ id: key,
+ task: data[key].task,
+ description: data[key].description,
+ date: data[key].date,
+ completed: data[key].completed || false,
+ priority: data[key].priority,
+ //empty or invalid tasks are not added 
+ // todo.task checks that the task exists 
+ // todo.task.trim() takes out the whitespace to make sure whether its empty or not 
+ })).filter((todo) => todo.task && todo.task.trim() !== "");
 
-  const handleViewReport = () => {
-    navigation.navigate('InsightsScreen'); // Navigate to InsightsScreen
-  };
+ setTodos(todosArray);
+ 
+ setFilteredTodos(todosArray); // Initialize filteredTodos with all todos
+ } else {
+ setTodos([]);
+ setFilteredTodos([]);
+ }
+ });
+ //to ensure that the system stops listening to the database 
+ return () => unsubscribe();
+ }
+ }, []);
 
-  return (
-    <View style={styles.container}>
-      {/* Top Vector Background */}
-      <Image source={require("../assets/TopVector.png")} style={styles.topVector} />
+ const handleSearch = (query) => {
+ setSearchQuery(query);
+ if (query.trim() === "") {
+ setFilteredTodos(todos);
+ } else {
+ setFilteredTodos(
+ todos.filter(todo => todo.task.toLowerCase().includes(query.toLowerCase()))
+ );
+ }
+ };
+/// toggle the completed state of a todo item
+ const toggleTodoCompleted = (id) => {
+ // Update the local state
+ const updatedTodos = todos.map((todo) =>
+ todo.id === id ? { ...todo, completed: !todo.completed } : todo
+ ); // Toggle the completed state
+ setTodos(updatedTodos);
 
-      {/* Welcome Section with Profile Image */}
-      <View style={styles.welcomeSection}>
-        <Text style={styles.welcomeText}>Welcome Ahmed</Text> {/* Moved this above profile image */}
-        <Image source={require("../assets/Child1.png")} style={styles.profileImage} />
-      </View>
+ const user = auth.currentUser;
+ if (user) {
+ // Update the completed state in Firebase
+ const db = getDatabase();
+ const updatedTodo = updatedTodos.find(todo => todo.id === id); // Get the updated todo
+ const todoRef = ref(db, `/${user.uid}/${id}`);
+ set(todoRef, updatedTodo).catch((error) => {
+ console.error("Error updating task:", error);
+ });
+ }
+ };
+//DELETE 
+ //https://www.youtube.com/watch?v=9orKRpPMveY&t=1928s
+ const deleteTodo = (id) => {
+ const user = auth.currentUser;
+ const db = getDatabase();
+ if (user) {
+ remove(ref(db, `/${user.uid}/${id}`)).catch((error) => {
+ console.error("Error deleting task:", error);
+ });
+ }
+ };
+//assigning priority to tasks
+ //takes an item from an object in this case itll be priority
+ //https://reactnative.dev/docs/using-a-listview 
+ const renderTodo = ({ item }) => {
+ let priorityColor = item.priority === 3 ? "red" : item.priority === 2 ? "orange" : "green";
 
-      {/* Progress Bar under Completed Tasks */}
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>Task Completion</Text>
-        <ProgressBar 
-          progress={0.7} // Adjust this to your task completion percentage
-          color="#FD6262"
-          style={styles.progressBar}
-        />
-      </View>
+ return (
+ 
+ /*If a task item is pressed, it navigates to the edit to do page. task:item is there to pass the pressed task to the next screen */
+ <TouchableOpacity onPress={() => navigation.navigate("EditingToDoPage", { task: item })}>
+ <View style={styles.todoContainer}>
+ <TouchableOpacity onPress={() => toggleTodoCompleted(item.id)} style={styles.checkbox}>
+ {item.completed && <View style={styles.checkedCheckbox} />}
+ </TouchableOpacity>
+ <View style={styles.todoContent}>
+ <Text style={[styles.todoText, { textDecorationLine: item.completed ? "line-through" : "none" }]}>
+ {item.task}
+ </Text>
+ <Text style={styles.todoDate}>{item.date}</Text>
+ </View>
+ <Ionicons name="thermometer" size={20} color={priorityColor} style={styles.priorityIcon} />
+ <TouchableOpacity onPress={() => deleteTodo(item.id)}>
+ <Ionicons name="trash-outline" size={24} color="red" />
+ </TouchableOpacity>
+ </View>
+ </TouchableOpacity>
+ );
+ };
 
-      {/* Tasks Section */}
-      <View style={styles.taskSection}>
-        <View style={styles.taskHeader}>
-          <Text style={styles.taskTitle}>Tasks List</Text>
-          <TouchableOpacity onPress={handleViewReport}>
-            <Text style={styles.viewReport}>View Report</Text>
-          </TouchableOpacity>
-        </View>
+ const handleMoodSelection = (selectedMood) => {
+ setMood(selectedMood);
+ if (selectedMood === "happy") {
+ setQuote("You're doing amazing! Keep it up!");
+ } else if (selectedMood === "neutral") {
+ setQuote("Stay focused, great things are coming your way!");
+ } else if (selectedMood === "sad") {
+ setQuote("Tough times don't last, but tough people do. Keep going!");
+ }
+ };
 
-        {/* Task Box */}
-        <View style={styles.taskBox}>
-          <View style={styles.taskHeaderRow}>
-            <Text style={styles.dailyTasks}>Daily Tasks</Text>
-            <View style={styles.iconContainer}>
-              <TouchableOpacity>
-                <Ionicons name="add-circle-outline" size={24} color="black" style={styles.icon} />
-              </TouchableOpacity>
-              <TouchableOpacity>
-                <Ionicons name="trash-outline" size={24} color="black" style={styles.icon} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <FlatList
-            data={tasks}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => {
-              let priorityImage;
-              switch (item.priority) {
-                case 'high':
-                  priorityImage = require('../assets/high-priority.png'); // Corrected path
-                  break;
-                case 'medium':
-                  priorityImage = require('../assets/medium-priority.png'); // Corrected path
-                  break;
-                case 'low':
-                  priorityImage = require('../assets/low-priority.png'); // Corrected path
-                  break;
-                default:
-                  priorityImage = null;
-              }
+ return (
+ <SafeAreaView style={styles.container}>
+ {/* Search Bar */}
+ <View style={styles.searchContainer}>
+ <TextInput
+ style={styles.searchInput}
+ placeholder="Search tasks..."
+ value={searchQuery}
+ onChangeText={handleSearch}
+ />
+ <Ionicons name="search" size={30} color="#4EC5C5" style={styles.searchIcon} />
+ </View>
 
-              return (
-                <TouchableOpacity style={styles.taskItem}>
-                  <Ionicons name="square-outline" size={20} color="black" />
-                  <View style={styles.taskInfo}>
-                    <Text style={styles.taskText}>{item.title}</Text>
-                    <Text style={styles.taskDate}>{item.date}</Text>
-                  </View>
-                  <Image source={priorityImage} style={styles.priorityIcon} />
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </View>
-      </View>
+ {/* Welcome Section */}
+ <View style={styles.welcomeSection}>
+ <Text style={styles.welcomeText}>Welcome Back</Text>
+ </View>
 
-      {/* Tab Bar */}
-      <TabBar /> {/* Add TabBar at the bottom */}
-    </View>
-  );
-}
+ {/* Mood Selection Section */}
+ <View style={styles.moodContainer}>
+ <Text style={styles.moodText}>How are you feeling today?</Text>
+ <View style={styles.iconsContainer}>
+ <TouchableOpacity onPress={() => handleMoodSelection("happy")}>
+ <MaterialIcons name="mood" size={40} color="green" />
+ </TouchableOpacity>
+ <TouchableOpacity onPress={() => handleMoodSelection("neutral")}>
+ <MaterialIcons name="sentiment-neutral" size={41} color="orange" />
+ </TouchableOpacity>
+ <TouchableOpacity onPress={() => handleMoodSelection("sad")}>
+ <MaterialIcons name="mood-bad" size={40} color="red" />
+ </TouchableOpacity>
+ </View>
+ {mood && <Text style={styles.quoteText}>{quote}</Text>}
+ </View>
+
+ {/* Top Image */}
+ <Image source={require("./assets/top_corner.png")} style={styles.image} />
+
+ {/* Header */}
+ <View style={styles.header}>
+ <Text style={styles.title}>To-Do List</Text>
+ </View>
+
+ {/* To-Do List */}
+ <FlatList
+ data={filteredTodos}
+ renderItem={renderTodo}
+ keyExtractor={(item) => item.id}
+ contentContainerStyle={styles.listContainer}
+ ListEmptyComponent={
+ <View style={styles.emptyContainer}>
+ <Text style={styles.emptyText}>No tasks yet. Add a task to get started!</Text>
+ <TouchableOpacity onPress={() => navigation.navigate("AddingToDoPage")}>
+ <Text style={styles.addTaskText}>Add a Task</Text>
+ </TouchableOpacity>
+ </View>
+ }
+ />
+
+ {/* Tab Bar */}
+ <TabBar />
+ </SafeAreaView>
+ );
+};
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#E7EFEF",
-    flex: 1,
-    alignItems: "center",
-    paddingBottom: 60, // To avoid overlap with TabBar
-  },
-  topVector: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: 200,
-    height: 200,
-    resizeMode: "contain",
-  },
-  welcomeSection: {
-    alignItems: 'center',
-    marginTop: 100, // Adjusted to fit text above the image
-  },
-  profileImage: { 
-    width: 120, 
-    height: 120, 
-    marginTop: 10, // Reduced the margin-top to bring it closer to the text
-    borderRadius: 30, 
-    resizeMode: "contain" 
-  },
-  welcomeText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    color: 'black',
-  },
-  progressContainer: {
-    width: '90%',
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  progressText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: 'black',
-  },
-  progressBar: {
-    height: 30,
-    borderRadius: 20,
-    marginTop: 10,
-  },
-  taskSection: {
-    flex: 1,
-    width: '90%',
-    justifyContent: 'flex-start',
-    alignSelf: 'center',
-    marginTop: 20,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20, // Lower task list header
-  },
-  taskHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  taskTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  viewReport: {
-    fontSize: 14,
-    color: '#4EC5C5', // Button color
-    fontWeight: 'bold',
-    textDecorationLine: 'underline', // Underline for button-like appearance
-  },
-  taskBox: {
-    backgroundColor: 'white',
-    borderRadius: 13,
-    borderColor: "#FD6262", 
-    borderWidth: 1,
-    padding: 20,
-    elevation: 3,
-    width: 350,
-    height: 355,
-    alignSelf: 'center',
-  },
-  dailyTasks: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  iconContainer: {
-    flexDirection: 'row',
-  },
-  icon: {
-    marginLeft: 10,
-  },
-  taskItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    justifyContent: 'space-between',
-  },
-  taskInfo: {
-    marginLeft: 10,
-    flex: 1,
-  },
-  taskText: {
-    fontSize: 14,
-  },
-  taskDate: {
-    fontSize: 12,
-    color: 'gray',
-  },
-  priorityIcon: {
-    width: 10,
-    height: 20,
-  },
+ container: {
+ flex: 1,
+ backgroundColor: "f0f0f0",
+ paddingHorizontal: 20,
+ paddingBottom: 60,
+ alignItems: "center", // Centers everything inside the container
+ },
+ image: {
+ position: "absolute",
+ top: 0,
+ left: 0,
+ width: 200,
+ height: 200,
+ resizeMode: "contain",
+ },
+ searchContainer: {
+ flexDirection: "row",
+ alignItems: "center",
+ backgroundColor: "#fff",
+ borderRadius: 8,
+ paddingHorizontal: 10,
+ paddingVertical: 5,
+ marginBottom: 10,
+ width: "40%",
+ borderWidth: 1,
+ borderColor: "#ccc",
+ alignSelf: "flex-end",
+ marginRight: 10,
+ },
+ searchInput: {
+ flex: 1,
+ fontSize: 16,
+ },
+ searchIcon: {
+ marginLeft: 10,
+ },
+ welcomeSection: {
+ alignItems: 'center',
+ marginVertical: 10, // Optional, to give some space before the "How are you feeling" section
+ marginTop: 80,
+ },
+ welcomeText: {
+ fontWeight: 'bold',
+ textAlign: 'center',
+ fontSize: 30,
+ color: 'rgb(247, 136, 136)',
+ },
+ header: {
+ alignItems: "center",
+ marginVertical: 10,
+ },
+ title: {
+ fontSize: 24,
+ fontWeight: "bold",
+ },
+ moodContainer: {
+ alignItems: "center",
+ marginTop: 30, // Adjust this to reduce the gap between sections
+ },
+ moodText: {
+ fontSize: 18,
+ color: "#333",
+ marginBottom: 25,
+ },
+ iconsContainer: {
+ flexDirection: "row",
+ justifyContent: "space-between",
+ width: "60%",
+ marginBottom: 30,
+ },
+ quoteText: {
+ fontSize: 16,
+ color: "#333",
+ textAlign: "center",
+ fontStyle: "italic",
+ marginBottom: 20,
+ },
+ listContainer: {
+ paddingBottom: 30,
+ },
+ todoContainer: {
+ flexDirection: "row",
+ alignItems: "center",
+ backgroundColor: "#FFFFFF",
+ padding: 12,
+ borderRadius: 10,
+ borderWidth: 1,
+ borderColor: "#FD6262",
+ marginVertical: 5,
+ shadowColor: "#000",
+ shadowOffset: { width: 0, height: 2 },
+ shadowOpacity: 0.1,
+ shadowRadius: 2,
+ justifyContent: "space-between",
+ width: "97%",
+ },
+ todoContent: {
+ flex: 1,
+ marginLeft: 10,
+ },
+ todoText: {
+ fontSize: 18,
+ color: "#333",
+ },
+ todoDate: {
+ fontSize: 12,
+ color: "lightgray",
+ },
+ checkbox: {
+ width: 24,
+ height: 24,
+ borderWidth: 1,
+ borderColor: "gray",
+ borderRadius: 4,
+ backgroundColor: "white",
+ marginRight: 10,
+ justifyContent: "center",
+ alignItems: "center",
+ },
+ checkedCheckbox: {
+ width: 16,
+ height: 16,
+ backgroundColor: "#FD6262",
+ },
+ priorityIcon: {
+ marginLeft: 10,
+ },
+ emptyContainer: {
+ alignItems: 'center',
+ marginTop: 30,
+ },
+ emptyText: {
+ fontSize: 16,
+ color: "#999",
+ marginBottom: 10,
+ },
+ addTaskText: {
+ fontSize: 16,
+ color: "#4EC5C5",
+ },
 });
+
+export default ToDoList;

@@ -4,57 +4,53 @@ import { StyleSheet } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FIREBASE_AUTH } from './FirebaseConfig';
 import { useNavigation } from '@react-navigation/native';
-import SignUpScreen from './signup';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import ToDoList from './HomePage';
+
 
 const SignInScreen = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-
     const auth = FIREBASE_AUTH;
-
     const navigation = useNavigation();
 
-    
     const signIn = async () => {
         setLoading(true);
         try {
             const response = await signInWithEmailAndPassword(auth, email, password);
             console.log(response);
-            alert('Check ur email');
+            alert('Login successful');
+            //go to users page after login
+            navigation.navigate('ToDoList'); 
         } catch (e) {
-            consolele.log(e);
-            alert('sign in failed'+ e.message);
-        }finally{
+            console.log(e);
+            alert('Sign in failed: ' + e.message);
+        } finally {
             setLoading(false);
         }
     };
     
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-    <View style={styles2.screen}>   
-      <View style={styles2.content}>
-      
-    <View style1={styles2.contentContainer}>
+  <View style={styles2.screen}>   
+    <View style={styles2.content}>
+      <View style1={styles2.contentContainer}>
         <Image
-                  source={require('./assets/top_corner.png')} 
-                  style={styles2.topImage}
-                  accessibilityLabel="Person with clipboard"
-                />
+          source={require('./assets/top_corner.png')} 
+          style={styles2.topImage}
+        />
    
-    
     <View style={styles2.headerContainer}>
-      <Text style={styles2.headerTitle}>Welcome Onboard</Text>
+    <Text style={styles2.headerTitle}>Welcome Back</Text>
     </View>
 
      <Image
-               source={require('./assets/image 1.png')} 
-               style={styles2.displayImage}
-               accessibilityLabel="Person with clipboard"
-         />
+        source={require('./assets/image 1.png')} 
+        style={styles2.displayImage}
+      />
   
-
+     {/* Email input field */}
     <View style={styles2.formContainer}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
         <Ionicons name="mail-outline" size={20} color="#888" padding = '10'/>
@@ -68,6 +64,7 @@ const SignInScreen = () => {
         />
       </View>
 
+    {/* Password input field */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15  }}>
         <Ionicons name="lock-closed-outline" size={20} color="#888" padding = '10' />
         <TextInput
@@ -85,16 +82,14 @@ const SignInScreen = () => {
     ):(
         <>
         
-         <TouchableOpacity 
-      style={styles2.button}
-      onPress={signIn}
-    >
-      <Text style={styles2.buttonText}>Login</Text>
-    </TouchableOpacity>
+         <TouchableOpacity style={styles2.button} onPress={signIn}>
+         <Text style={styles2.buttonText}>Sign in</Text>
+         </TouchableOpacity>
+
         </>
     )}
     
-    </View>
+  </View>
 
     <View style={styles2.linkContainer}>
       <Text style={styles2.linkText}>Don't have an account? </Text>
@@ -105,10 +100,6 @@ const SignInScreen = () => {
   </View>
   </View>
   </View>
- 
-  
-
-    </SafeAreaView>
 
   );
 };
